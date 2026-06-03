@@ -98,22 +98,44 @@ app.get('/api/partners', requireAuth, async (req, res) => {
     const rowsR = await query(`SELECT ${PUBLIC} FROM users WHERE ${clauses.join(' AND ')}`, params);
 
     const connR = await query(
-      `SELECT requester, recipient, status FROM connections WHERE requester = $1 OR recipient = $1`,
+      `SELECT id, requester, recipient, status FROM connections WHERE requester = $1 OR recipient = $1`,
       [req.user.id]
     );
-    const statusFor = (otherId) => {
+    const connFor = (otherId) => {
       const c = connR.rows.find((x) => x.requester === otherId || x.recipient === otherId);
-      return c ? c.status : 'none';
+      if (!c) return { connection_status: 'none', connection_id: null, incoming: false };
+      return {
+        connection_status: c.status,
+        connection_id: c.id,
+        // incoming = the other person sent ME the request and it's still pending
+        incoming: c.status === 'pending' && c.recipient === req.user.id,
+      };
     };
 
     const scored = rowsR.rows
       .map((p) => {
         const score = matchScore(me, p);
-        return { ...p, match_score: score, match_label: matchLabel(score), connection_status: statusFor(p.id) };
+        return { ...p, match_score: score, match_label: matchLabel(score), ...connFor(p.id) };
       })
       .sort((a, b) => b.match_score - a.match_score);
 
     res.json(scored);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ----------------------- PENDING INCOMING REQUESTS ------------------------ */
+// Requests other doctors have sent to ME that I haven't accepted/declined yet.
+app.get('/api/requests', requireAuth, async (req, res) => {
+  try {
+    const cols = PUBLIC.split(', ').map((f) => 'u.' + f).join(', ');
+    const r = await query(`
+      SELECT c.id AS connection_id, ${cols}
+      FROM connections c
+      JOIN users u ON u.id = c.requester
+      WHERE c.recipient = $1 AND c.status = 'pending'
+      ORDER BY c.created_at DESC
+    `, [req.user.id]);
+    res.json(r.rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -214,3 +236,4 @@ if (process.env.VERCEL === undefined) {
 }
 
 export default app;
+
