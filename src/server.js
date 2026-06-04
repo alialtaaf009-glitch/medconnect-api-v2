@@ -18,7 +18,7 @@ app.use((req, res, next) => {
 });
 
 // Columns safe to expose about other users (never password_hash).
-const PUBLIC = 'id, name, gender, country, timezone, exam, step, level, exam_date, bio, verified';
+const PUBLIC = 'id, name, gender, country, timezone, exam, step, level, exam_date, bio, institution, verified';
 
 /* ---------------------------------- AUTH ---------------------------------- */
 
@@ -66,7 +66,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
 
 app.put('/api/me', requireAuth, async (req, res) => {
   try {
-    const allowed = ['name', 'country', 'timezone', 'exam', 'step', 'level', 'exam_date', 'bio'];
+    const allowed = ['name', 'country', 'timezone', 'exam', 'step', 'level', 'exam_date', 'bio', 'institution'];
     const keys = allowed.filter((k) => k in (req.body || {}));
     if (!keys.length) return res.status(400).json({ error: 'No updatable fields provided' });
 
@@ -94,6 +94,9 @@ app.get('/api/partners', requireAuth, async (req, res) => {
     if (step) { params.push(step); clauses.push(`step = $${params.length}`); }
     if (level) { params.push(level); clauses.push(`level = $${params.length}`); }
     if (gender) { params.push(gender); clauses.push(`gender = $${params.length}`); }
+    // Hide anyone I've blocked, or who has blocked me.
+    clauses.push(`id NOT IN (SELECT blocked FROM blocks WHERE blocker = $1)`);
+    clauses.push(`id NOT IN (SELECT blocker FROM blocks WHERE blocked = $1)`);
 
     const rowsR = await query(`SELECT ${PUBLIC} FROM users WHERE ${clauses.join(' AND ')}`, params);
 
@@ -238,6 +241,34 @@ app.get('/api/unread', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* --------------------------- REPORT / BLOCK ------------------------------- */
+
+app.post('/api/report', requireAuth, async (req, res) => {
+  try {
+    const { reported, reason } = req.body || {};
+    if (!reported || Number(reported) === req.user.id)
+      return res.status(400).json({ error: 'Valid user to report is required' });
+    await query('INSERT INTO reports (reporter, reported, reason) VALUES ($1,$2,$3)',
+      [req.user.id, reported, (reason || '').slice(0, 500)]);
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/block', requireAuth, async (req, res) => {
+  try {
+    const { blocked } = req.body || {};
+    if (!blocked || Number(blocked) === req.user.id)
+      return res.status(400).json({ error: 'Valid user to block is required' });
+    // Block them, and remove any existing connection between you.
+    await query('INSERT INTO blocks (blocker, blocked) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [req.user.id, blocked]);
+    await query(`DELETE FROM connections
+      WHERE (requester = $1 AND recipient = $2) OR (requester = $2 AND recipient = $1)`,
+      [req.user.id, blocked]);
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* --------------------------------- BOOT ----------------------------------- */
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -250,3 +281,4 @@ if (process.env.VERCEL === undefined) {
 }
 
 export default app;
+
