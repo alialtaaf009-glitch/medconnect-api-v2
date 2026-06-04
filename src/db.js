@@ -30,8 +30,28 @@ export async function initSchema() {
       level         TEXT,
       exam_date     TEXT,
       bio           TEXT,
+      institution   TEXT,
       verified      INTEGER DEFAULT 0,
       created_at    TIMESTAMPTZ DEFAULT now()
+    );
+
+    -- Add institution column for existing databases (safe if already there).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS institution TEXT;
+
+    CREATE TABLE IF NOT EXISTS reports (
+      id          SERIAL PRIMARY KEY,
+      reporter    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reported    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reason      TEXT,
+      created_at  TIMESTAMPTZ DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS blocks (
+      id          SERIAL PRIMARY KEY,
+      blocker     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      blocked     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at  TIMESTAMPTZ DEFAULT now(),
+      UNIQUE (blocker, blocked)
     );
 
     CREATE TABLE IF NOT EXISTS connections (
