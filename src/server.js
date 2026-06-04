@@ -190,7 +190,8 @@ app.get('/api/messages/:userId', requireAuth, async (req, res) => {
   try {
     const other = Number(req.params.userId);
     const r = await query(`
-      SELECT id, sender, recipient, body, created_at
+      SELECT id, sender, recipient, body,
+             to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
       FROM messages
       WHERE (sender = $1 AND recipient = $2) OR (sender = $2 AND recipient = $1)
       ORDER BY created_at ASC
@@ -217,10 +218,23 @@ app.post('/api/messages/:userId', requireAuth, async (req, res) => {
     if (!ok.rows.length) return res.status(403).json({ error: 'You can only message accepted connections' });
 
     const ins = await query(
-      'INSERT INTO messages (sender, recipient, body) VALUES ($1,$2,$3) RETURNING id, sender, recipient, body, created_at',
+      `INSERT INTO messages (sender, recipient, body) VALUES ($1,$2,$3)
+       RETURNING id, sender, recipient, body,
+         to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at`,
       [req.user.id, other, body.trim()]
     );
     res.status(201).json({ ...ins.rows[0], mine: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Count of unread incoming messages (used for the Messages badge).
+app.get('/api/unread', requireAuth, async (req, res) => {
+  try {
+    const r = await query(
+      `SELECT COUNT(*)::int AS n FROM messages WHERE recipient = $1 AND read_at IS NULL`,
+      [req.user.id]
+    );
+    res.json({ unread: r.rows[0].n });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -236,4 +250,3 @@ if (process.env.VERCEL === undefined) {
 }
 
 export default app;
-
