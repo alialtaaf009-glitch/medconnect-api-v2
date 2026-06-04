@@ -6,12 +6,20 @@ const LEVEL_ORDER = ['Just Started', '1–3 Months In', '3–6 Months In', '6+ M
 const REGION = {
   USMLE: 'us',
   PLAB: 'uk', MRCP: 'uk', MRCS: 'uk', MRCPCH: 'uk', MRCOG: 'uk',
-  MRCGP: 'uk', MRCPath: 'uk', MRCPsych: 'uk',
+  MRCGP: 'uk', MRCPath: 'uk', MRCPsych: 'uk', MRCEM: 'uk',
   'FCPS-Medicine': 'pk', 'FCPS-Surgery': 'pk', 'FCPS-GynaeObs': 'pk',
   'FCPS-Paeds': 'pk', 'FCPS-Pathology': 'pk', 'FCPS-Ophthalmology': 'pk', 'FCPS-ENT': 'pk',
+  AMC: 'au', RACP: 'au', RACS: 'au',
+  MRCPI: 'ie', MRCSI: 'ie', MICGP: 'ie', 'FRCA-IE': 'ie',
 };
 
-const tzNum = (t) => parseInt(String(t || 'UTC+0').replace('UTC', ''), 10) || 0;
+const tzNum = (t) => {
+  t = String(t || 'UTC+0').replace('UTC', '');
+  const m = t.match(/^([+-]?\d+)(?::(\d+))?/);
+  if (!m) return 0;
+  const h = parseInt(m[1], 10) || 0, min = m[2] ? parseInt(m[2], 10) : 0;
+  return h + (h < 0 ? -min / 60 : min / 60);
+};
 
 /**
  * Score how good a `candidate` is as a study partner for `me`. Returns 0–100.
@@ -46,3 +54,4 @@ export function matchLabel(score) {
   if (score >= 55) return 'Good';
   return 'Fair';
 }
+
