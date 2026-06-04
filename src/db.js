@@ -37,6 +37,7 @@ export async function initSchema() {
 
     -- Add institution column for existing databases (safe if already there).
     ALTER TABLE users ADD COLUMN IF NOT EXISTS institution TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ;
 
     CREATE TABLE IF NOT EXISTS reports (
       id          SERIAL PRIMARY KEY,
