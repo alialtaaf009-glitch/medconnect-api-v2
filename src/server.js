@@ -18,7 +18,12 @@ app.use((req, res, next) => {
 });
 
 // Columns safe to expose about other users (never password_hash).
-const PUBLIC = 'id, name, gender, country, timezone, exam, step, level, exam_date, bio, institution, verified';
+const PUBLIC = 'id, name, gender, country, timezone, exam, step, level, exam_date, bio, institution, verified, last_active';
+
+// Update a user's last_active timestamp (fire-and-forget; never blocks the response).
+function touchPresence(userId) {
+  query('UPDATE users SET last_active = now() WHERE id = $1', [userId]).catch(() => {});
+}
 
 /* ---------------------------------- AUTH ---------------------------------- */
 
@@ -86,6 +91,7 @@ app.get('/api/partners', requireAuth, async (req, res) => {
   try {
     const meR = await query(`SELECT ${PUBLIC} FROM users WHERE id = $1`, [req.user.id]);
     const me = meR.rows[0];
+    touchPresence(req.user.id);
     const { exam, step, level, gender } = req.query;
 
     const clauses = ['id <> $1'];
@@ -241,6 +247,12 @@ app.get('/api/unread', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Lightweight presence ping — frontend calls this periodically while app is open.
+app.post('/api/ping', requireAuth, (req, res) => {
+  touchPresence(req.user.id);
+  res.json({ ok: true });
+});
+
 /* --------------------------- REPORT / BLOCK ------------------------------- */
 
 app.post('/api/report', requireAuth, async (req, res) => {
@@ -281,4 +293,4 @@ if (process.env.VERCEL === undefined) {
 }
 
 export default app;
-
+        
